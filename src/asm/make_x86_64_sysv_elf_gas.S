@@ -12,7 +12,7 @@
  *  ----------------------------------------------------------------------------------  *
  *  |   0x0   |   0x4   |   0x8   |   0xc   |   0x10   |   0x14  |   0x18  |   0x1c  |  *
  *  ----------------------------------------------------------------------------------  *
- *  | fc_mxcsr|fc_x87_cw|       guard       |         R12        |        R13        |  *
+ *  | fc_mxcsr|fc_x87_cw|      FS base      |         R12        |        R13        |  *
  *  ----------------------------------------------------------------------------------  *
  *  ----------------------------------------------------------------------------------  *
  *  |    8    |    9    |   10    |   11    |    12    |    13   |    14   |    15   |  *
@@ -40,6 +40,9 @@
 # endif
 .file "make_x86_64_sysv_elf_gas.S"
 .text
+#if (defined(_ILP32) || (defined(__CET__) && (__CET__ & 2)))
+#error "TLS contexts require x86-64 LP64 without CET shadow stacks"
+#endif
 .globl make_fcontext
 .type make_fcontext,@function
 .align 16
@@ -69,11 +72,8 @@ make_fcontext:
     /* save x87 control-word */
     fnstcw   0x4(%rax)
 
-#if defined(BOOST_CONTEXT_TLS_STACK_PROTECTOR)
-    /* save stack guard */
-    movq  %fs:0x28, %rcx    /* read stack guard from TLS record */
-    movq  %rcx, 0x8(%rsp)   /* save stack guard */
-#endif
+    rdfsbase %rcx
+    movq %rcx, 0x8(%rax) /* initial FS base */
 
     /* compute abs address of label trampoline */
     leaq  trampoline(%rip), %rcx
@@ -142,6 +142,15 @@ finish:
     call  _exit@PLT
     hlt
 .size make_fcontext,.-make_fcontext
+
+/* Bind a suspended context before its first user-code resume. */
+.globl boost_context_set_tls
+.type boost_context_set_tls,@function
+boost_context_set_tls:
+    _CET_ENDBR
+    movq %rsi, 0x8(%rdi)
+    ret
+.size boost_context_set_tls,.-boost_context_set_tls
 
 /* Mark that we don't need executable stack. */
 .section .note.GNU-stack,"",%progbits

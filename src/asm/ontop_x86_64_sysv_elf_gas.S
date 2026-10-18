@@ -12,7 +12,7 @@
  *  ----------------------------------------------------------------------------------  *
  *  |   0x0   |   0x4   |   0x8   |   0xc   |   0x10   |   0x14  |   0x18  |   0x1c  |  *
  *  ----------------------------------------------------------------------------------  *
- *  | fc_mxcsr|fc_x87_cw|       guard       |         R12        |        R13        |  *
+ *  | fc_mxcsr|fc_x87_cw|      FS base      |         R12        |        R13        |  *
  *  ----------------------------------------------------------------------------------  *
  *  ----------------------------------------------------------------------------------  *
  *  |    8    |    9    |   10    |   11    |    12    |    13   |    14   |    15   |  *
@@ -39,6 +39,9 @@
 # endif
 .file "ontop_x86_64_sysv_elf_gas.S"
 .text
+#if (defined(_ILP32) || (defined(__CET__) && (__CET__ & 2)))
+#error "TLS contexts require x86-64 LP64 without CET shadow stacks"
+#endif
 .globl ontop_fcontext
 .type ontop_fcontext,@function
 .align 16
@@ -54,10 +57,8 @@ ontop_fcontext:
     fnstcw   0x4(%rsp)  /* save x87 control-word */
 #endif
 
-#if defined(BOOST_CONTEXT_TLS_STACK_PROTECTOR)
-    movq  %fs:0x28, %rcx    /* read stack guard from TLS record */
-    movq  %rcx, 0x8(%rsp)   /* save stack guard */
-#endif
+    rdfsbase %rcx
+    movq %rcx, 0x8(%rsp) /* save outgoing FS base */
 
     movq  %r12, 0x10(%rsp)  /* save R12 */
     movq  %r13, 0x18(%rsp)  /* save R13 */
@@ -97,10 +98,8 @@ ontop_fcontext:
     fldcw    0x4(%rsp)  /* restore x87 control-word */
 #endif
 
-#if defined(BOOST_CONTEXT_TLS_STACK_PROTECTOR)
-    movq  0x8(%rsp), %rdx  /* load stack guard */
-    movq  %rdx, %fs:0x28   /* restore stack guard to TLS record */
-#endif
+    movq 0x8(%rsp), %rcx
+    wrfsbase %rcx /* restore incoming FS base */
 
     movq  0x10(%rsp), %r12  /* restore R12 */
     movq  0x18(%rsp), %r13  /* restore R13 */

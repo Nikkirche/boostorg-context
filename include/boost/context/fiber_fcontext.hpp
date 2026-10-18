@@ -8,6 +8,9 @@
 #define BOOST_CONTEXT_FIBER_H
 
 #include <boost/context/detail/config.hpp>
+#if defined(BOOST_USE_SEGMENTED_STACKS)
+# error "TLS contexts do not support segmented stacks"
+#endif
 
 #include <algorithm>
 #include <cstddef>
@@ -344,6 +347,12 @@ public:
 #endif
                     & p,
                     detail::fiber_ontop< fiber, decltype(p) >).fctx };
+    }
+
+    // The caller owns the TLS storage. Bind before the first user-code resume.
+    void set_tls_base( void * pointer) noexcept {
+        BOOST_ASSERT( nullptr != fctx_ && nullptr != pointer);
+        detail::boost_context_set_tls( fctx_, pointer);
     }
 
     explicit operator bool() const noexcept {
